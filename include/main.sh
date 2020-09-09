@@ -1,8 +1,8 @@
-#!/bin/bash
+#!/usr/bin/env bash
 
-DB_Info=('MySQL 5.1.73' 'MySQL 5.5.62' 'MySQL 5.6.46' 'MySQL 5.7.28' 'MySQL 8.0.18' 'MariaDB 5.5.66' 'MariaDB 10.1.43' 'MariaDB 10.2.30' 'MariaDB 10.3.21' 'MariaDB 10.4.11')
-PHP_Info=('PHP 5.2.17' 'PHP 5.3.29' 'PHP 5.4.45' 'PHP 5.5.38' 'PHP 5.6.40' 'PHP 7.0.33' 'PHP 7.1.33' 'PHP 7.2.29' 'PHP 7.3.16' 'PHP 7.4.4')
-Apache_Info=('Apache 2.2.34' 'Apache 2.4.41')
+DB_Info=('MySQL 5.1.73' 'MySQL 5.5.62' 'MySQL 5.6.48' 'MySQL 5.7.30' 'MySQL 8.0.20' 'MariaDB 5.5.68' 'MariaDB 10.1.45' 'MariaDB 10.2.32' 'MariaDB 10.3.23' 'MariaDB 10.4.13')
+PHP_Info=('PHP 5.2.17' 'PHP 5.3.29' 'PHP 5.4.45' 'PHP 5.5.38' 'PHP 5.6.40' 'PHP 7.0.33' 'PHP 7.1.33' 'PHP 7.2.33' 'PHP 7.3.21' 'PHP 7.4.9')
+Apache_Info=('Apache 2.2.34' 'Apache 2.4.46')
 
 Database_Selection()
 {
@@ -276,16 +276,17 @@ Apache_Selection()
 
 Kill_PM()
 {
-    if ps aux | grep "yum" | grep -qv "grep"; then
-        kill -9 $(ps -ef|grep yum|grep -v grep|awk '{print $2}')
+    if ps aux | grep -E "yum|dnf" | grep -qv "grep"; then
+        kill -9 $(ps -ef|grep -E "yum|dnf"|grep -v grep|awk '{print $2}')
         if [ -s /var/run/yum.pid ]; then
             rm -f /var/run/yum.pid
         fi
-    elif ps aux | grep "apt-get" | grep -qv "grep"; then
-        if command -v killall >/dev/null 2>&1; then
-            killall apt-get
-        else
-            kill `pidof apt-get`
+    elif ps aux | grep -E "apt-get|dpkg|apt" | grep -qv "grep"; then
+        kill -9 $(ps -ef|grep -E "apt-get|apt|dpkg"|grep -v grep|awk '{print $2}')
+        if [[ -s /var/lib/dpkg/lock-frontend || -s /var/lib/dpkg/lock ]]; then
+            rm -f /var/lib/dpkg/lock-frontend
+            rm -f /var/lib/dpkg/lock
+            dpkg --configure -a
         fi
     fi
 }
@@ -329,29 +330,24 @@ Get_Dist_Version()
 {
     if command -v lsb_release >/dev/null 2>&1; then
         DISTRO_Version=$(lsb_release -sr)
-        eval ${DISTRO}_Version=$(lsb_release -sr)
     elif [ -f /etc/lsb-release ]; then
         . /etc/lsb-release
         DISTRO_Version="$DISTRIB_RELEASE"
-        eval ${DISTRO}_Version="$DISTRIB_RELEASE"
     elif [ -f /etc/os-release ]; then
         . /etc/os-release
         DISTRO_Version="$VERSION_ID"
-        eval ${DISTRO}_Version="$VERSION_ID"
     fi
     if [[ "${DISTRO}" = "" || "${DISTRO_Version}" = "" ]]; then
         if command -v python2 >/dev/null 2>&1; then
             DISTRO_Version=$(python2 -c 'import platform; print platform.linux_distribution()[1]')
-            eval ${DISTRO}_Version=$(python2 -c 'import platform; print platform.linux_distribution()[1]')
         elif command -v python3 >/dev/null 2>&1; then
             DISTRO_Version=$(python3 -c 'import platform; print(platform.linux_distribution()[1])')
-            eval ${DISTRO}_Version=$(python3 -c 'import platform; print(platform.linux_distribution()[1])')
         else
             Install_LSB
             DISTRO_Version=`lsb_release -rs`
-            eval ${DISTRO}_Version=`lsb_release -rs`
         fi
     fi
+    printf -v "${DISTRO}_Version" '%s' "${DISTRO_Version}"
 }
 
 Get_Dist_Name()
@@ -471,6 +467,20 @@ Tarj_Cd()
     fi
 }
 
+TarJ_Cd()
+{
+    local FileName=$1
+    local DirName=$2
+    cd ${cur_dir}/src
+    [[ -d "${DirName}" ]] && rm -rf ${DirName}
+    echo "Uncompress ${FileName}..."
+    tar Jxf ${FileName}
+    if [ -n "${DirName}" ]; then
+        echo "cd ${DirName}..."
+        cd ${DirName}
+    fi
+}
+
 Check_LNMPConf()
 {
     if [ ! -s "${cur_dir}/lnmp.conf" ]; then
@@ -552,6 +562,7 @@ StartUp()
     init_name=$1
     echo "Add ${init_name} service at system startup..."
     if command -v systemctl >/dev/null 2>&1 && [[ -s /etc/systemd/system/${init_name}.service || -s /lib/systemd/system/${init_name}.service || -s /usr/lib/systemd/system/${init_name}.service ]]; then
+        systemctl daemon-reload
         systemctl enable ${init_name}.service
     else
         if [ "$PM" = "yum" ]; then
@@ -636,6 +647,28 @@ Check_Mirror()
                     fi
                 fi
             fi
+        fi
+    fi
+}
+
+Check_CMPT()
+{
+    if [[ "${DBSelect}" = "5" ]]; then
+        if echo "${Ubuntu_Version}" | grep -Eqi "^1[0-7]\." || echo "${Debian_Version}" | grep -Eqi "^[4-8]" || echo "${Raspbian_Version}" | grep -Eqi "^[4-8]" || echo "${CentOS_Version}" | grep -Eqi "^[4-7]"  || echo "${RHEL_Version}" | grep -Eqi "^[4-7]" || echo "${Fedora_Version}" | grep -Eqi "^2[0-3]"; then
+            Echo_Red "MySQL 8.0 please use latest linux distributions!"
+            exit 1
+        fi
+    fi
+    if [[ "${PHPSelect}" == "10" ]]; then
+        if echo "${Ubuntu_Version}" | grep -Eqi "^1[0-7]\." || echo "${Debian_Version}" | grep -Eqi "^[4-8]" || echo "${Raspbian_Version}" | grep -Eqi "^[4-8]" || echo "${CentOS_Version}" | grep -Eqi "^[4-6]"  || echo "${RHEL_Version}" | grep -Eqi "^[4-6]" || echo "${Fedora_Version}" | grep -Eqi "^2[0-3]"; then
+            Echo_Red "PHP 7.4 please use latest linux distributions!"
+            exit 1
+        fi
+    fi
+    if [[ "${PHPSelect}" =~ ^[123456]$ ]]; then
+        if echo "${Ubuntu_Version}" | grep -Eqi "^19|2[0-7]\." || echo "${Debian_Version}" | grep -Eqi "^10" || echo "${Raspbian_Version}" | grep -Eqi "^10" || echo "${Deepin_Version}" | grep -Eqi "^2[0-9]" || echo "${Fedora_Version}" | grep -Eqi "^29|3[0-9]"; then
+            Echo_Red "Install lower than PHP 7.1 is not supported on very new linux versions such as Ubuntu 19+, Debian 10, Deepin 20+, Fedora 29+ etc."
+            exit 1
         fi
     fi
 }

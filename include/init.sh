@@ -1,4 +1,4 @@
-#!/bin/bash
+#!/usr/bin/env bash
 
 Set_Timezone()
 {
@@ -56,11 +56,20 @@ Deb_RemoveAMP()
     for removepackages in apache2 apache2-doc apache2-utils apache2.2-common apache2.2-bin apache2-mpm-prefork apache2-doc apache2-mpm-worker php5 php5-common php5-cgi php5-cli php5-mysql php5-curl php5-gd;
     do apt-get purge -y $removepackages; done
     if [[ "${DBSelect}" != "0" ]]; then
-        for removepackages in mysql-client mysql-server mysql-common mysql-server-core-5.5 mysql-client-5.5 mariadb-client mariadb-server mariadb-common;
-        do apt-get purge -y $removepackages; done
-        dpkg -l |grep mysql
-        dpkg -P mysql-server mysql-common libmysqlclient15off libmysqlclient15-dev
-        dpkg -P mariadb-client mariadb-server mariadb-common
+        if echo "${Ubuntu_Version}" | grep -Eqi "^20\.04"; then
+            dpkg -l |grep mysql
+            dpkg --force-all -P mysql-server
+            dpkg --force-all -P mariadb-client mariadb-server mariadb-common libmariadbd-dev
+            [[ -d "/etc/mysql" ]] && rm -rf /etc/mysql
+            for removepackages in mysql-server mariadb-server;
+            do apt-get purge -y $removepackages; done
+        else
+            dpkg -l |grep mysql
+            dpkg --force-all -P mysql-server mysql-common libmysqlclient15off libmysqlclient15-dev libmysqlclient18 libmysqlclient18-dev libmysqlclient20 libmysqlclient-dev libmysqlclient21
+            dpkg --force-all -P mariadb-client mariadb-server mariadb-common libmariadbd-dev
+            for removepackages in mysql-client mysql-server mysql-common mysql-server-core-5.5 mysql-client-5.5 mariadb-client mariadb-server mariadb-common;
+            do apt-get purge -y $removepackages; done
+        fi
     fi
     killall apache2
     dpkg -l |grep apache
@@ -154,13 +163,15 @@ Ubuntu_Modify_Source()
     elif grep -Eqi "17.04" /etc/*-release || echo "${Ubuntu_Version}" | grep -Eqi '^17.04'; then
         CodeName='zesty'
     elif grep -Eqi "17.10" /etc/*-release || echo "${Ubuntu_Version}" | grep -Eqi '^17.10'; then
-        Ubuntu_Deadline artful
+        CodeName='artful'
     elif grep -Eqi "16.04" /etc/*-release || echo "${Ubuntu_Version}" | grep -Eqi '^16.04'; then
         Ubuntu_Deadline xenial
     elif grep -Eqi "18.10" /etc/*-release || echo "${Ubuntu_Version}" | grep -Eqi '^18.10'; then
-        Ubuntu_Deadline cosmic
+        CodeName='cosmic'
     elif grep -Eqi "19.04" /etc/*-release || echo "${Ubuntu_Version}" | grep -Eqi '^19.04'; then
-        Ubuntu_Deadline disco
+        CodeName='disco'
+    elif grep -Eqi "19.10" /etc/*-release || echo "${Ubuntu_Version}" | grep -Eqi '^19.10'; then
+        Ubuntu_Deadline eoan
     fi
     if [ "${CodeName}" != "" ]; then
         \cp /etc/apt/sources.list /etc/apt/sources.list.$(date +"%Y%m%d")
@@ -190,11 +201,9 @@ Check_Old_Releases_URL()
 
 Ubuntu_Deadline()
 {
-    trusty_deadline=`date -d "2019-7-22 00:00:00" +%s`
-    artful_deadline=`date -d "2018-7-31 00:00:00" +%s`
-    xenial_deadline=`date -d "2021-4-30 00:00:00" +%s`
-    cosmic_deadline=`date -d "2019-7-30 00:00:00" +%s`
-    disco_deadline=`date -d "2020-1-30 00:00:00" +%s`
+    trusty_deadline=`date -d "2022-4-30 00:00:00" +%s`
+    xenial_deadline=`date -d "2024-4-30 00:00:00" +%s`
+    eoan_deadline=`date -d "2020-7-30 00:00:00" +%s`
     cur_time=`date  +%s`
     case "$1" in
         trusty)
@@ -203,28 +212,16 @@ Ubuntu_Deadline()
                 Check_Old_Releases_URL trusty
             fi
             ;;
-        artful)
-            if [ ${cur_time} -gt ${artful_deadline} ]; then
-                echo "${cur_time} > ${artful_deadline}"
-                Check_Old_Releases_URL artful
-            fi
-            ;;
         xenial)
             if [ ${cur_time} -gt ${xenial_deadline} ]; then
                 echo "${cur_time} > ${xenial_deadline}"
                 Check_Old_Releases_URL xenial
             fi
             ;;
-        cosmic)
-            if [ ${cur_time} -gt ${cosmic_deadline} ]; then
-                echo "${cur_time} > ${cosmic_deadline}"
-                Check_Old_Releases_URL cosmic
-            fi
-            ;;
-        disco)
-            if [ ${cur_time} -gt ${disco_deadline} ]; then
-                echo "${cur_time} > ${disco_deadline}"
-                Check_Old_Releases_URL disco
+        eoan)
+            if [ ${cur_time} -gt ${eoan_deadline} ]; then
+                echo "${cur_time} > ${eoan_deadline}"
+                Check_Old_Releases_URL eoan
             fi
             ;;
     esac
@@ -238,19 +235,36 @@ CentOS_Dependent()
     fi
 
     Echo_Blue "[+] Yum installing dependent packages..."
-    for packages in make cmake gcc gcc-c++ gcc-g77 flex bison file libtool libtool-libs autoconf patch wget crontabs libjpeg libjpeg-devel libpng libpng-devel libpng10 libpng10-devel gd gd-devel libxml2 libxml2-devel zlib zlib-devel glib2 glib2-devel unzip tar bzip2 bzip2-devel libzip-devel libevent libevent-devel ncurses ncurses-devel curl curl-devel libcurl libcurl-devel e2fsprogs e2fsprogs-devel krb5 krb5-devel libidn libidn-devel openssl openssl-devel pcre-devel gettext gettext-devel ncurses-devel gmp-devel pspell-devel unzip libcap diffutils ca-certificates net-tools libc-client-devel psmisc libXpm-devel git-core c-ares-devel libicu-devel libxslt libxslt-devel xz expat-devel libaio-devel rpcgen libtirpc-devel perl python-devel cyrus-sasl-devel sqlite-devel oniguruma-devel;
+    for packages in make cmake gcc gcc-c++ gcc-g77 flex bison file libtool libtool-libs autoconf patch wget crontabs libjpeg libjpeg-devel libpng libpng-devel libpng10 libpng10-devel gd gd-devel libxml2 libxml2-devel zlib zlib-devel glib2 glib2-devel unzip tar bzip2 bzip2-devel libzip-devel libevent libevent-devel ncurses ncurses-devel curl curl-devel libcurl libcurl-devel e2fsprogs e2fsprogs-devel krb5 krb5-devel libidn libidn-devel openssl openssl-devel pcre-devel gettext gettext-devel ncurses-devel gmp-devel pspell-devel unzip libcap diffutils ca-certificates net-tools libc-client-devel psmisc libXpm-devel git-core c-ares-devel libicu-devel libxslt libxslt-devel xz expat-devel libaio-devel rpcgen libtirpc-devel perl python-devel cyrus-sasl-devel sqlite-devel oniguruma-devel lsof re2c;
     do yum -y install $packages; done
 
     yum -y update nss
 
     if [ "${DISTRO}" = "CentOS" ] && echo "${CentOS_Version}" | grep -Eqi "^8"; then
-        dnf --enablerepo=PowerTools install rpcgen -y
+        if ! yum repolist all|grep PowerTools; then
+            echo "PowerTools repository not found, add PowerTools repository ..."
+            cat >/etc/yum.repos.d/CentOS-PowerTools.repo<<EOF
+[PowerTools]
+name=CentOS-\$releasever - PowerTools
+mirrorlist=http://mirrorlist.centos.org/?release=\$releasever&arch=\$basearch&repo=PowerTools&infra=\$infra
+#baseurl=http://mirror.centos.org/\$contentdir/\$releasever/PowerTools/\$basearch/os/
+gpgcheck=1
+enabled=0
+gpgkey=file:///etc/pki/rpm-gpg/RPM-GPG-KEY-centosofficial
+EOF
+        fi
+        dnf --enablerepo=PowerTools install rpcgen re2c -y
         dnf --enablerepo=PowerTools install oniguruma-devel -y
     fi
 
-    if [ "${DISTRO}" = "CentOS" ] && echo "${CentOS_Version}" | grep -Eqi "^7"; then
-        yum -y install https://dl.fedoraproject.org/pub/epel/7/x86_64/Packages/o/oniguruma-5.9.5-3.el7.x86_64.rpm
-        yum -y install https://dl.fedoraproject.org/pub/epel/7/x86_64/Packages/o/oniguruma-devel-5.9.5-3.el7.x86_64.rpm
+    if echo "${CentOS_Version}" | grep -Eqi "^7" || echo "${RHEL_Version}" | grep -Eqi "^7"; then
+        yum -y install epel-release
+        yum -y install oniguruma oniguruma-devel
+        if [ "${CheckMirror}" = "n" ]; then
+            cd ${cur_dir}/src/
+            yum -y install ./oniguruma-6.8.2-1.el7.x86_64.rpm
+            yum -y install ./oniguruma-devel-6.8.2-1.el7.x86_64.rpm
+        fi
     fi
 
     if [ "${DISTRO}" = "Fedora" ]; then
@@ -270,7 +284,7 @@ Deb_Dependent()
     apt-get -fy install
     export DEBIAN_FRONTEND=noninteractive
     apt-get --no-install-recommends install -y build-essential gcc g++ make
-    for packages in debian-keyring debian-archive-keyring build-essential gcc g++ make cmake autoconf automake re2c wget cron bzip2 libzip-dev libc6-dev bison file rcconf flex bison m4 gawk less cpp binutils diffutils unzip tar bzip2 libbz2-dev libncurses5 libncurses5-dev libtool libevent-dev openssl libssl-dev zlibc libsasl2-dev libltdl3-dev libltdl-dev zlib1g zlib1g-dev libbz2-1.0 libbz2-dev libglib2.0-0 libglib2.0-dev libpng3 libjpeg-dev libpng-dev libpng12-0 libpng12-dev libkrb5-dev curl libcurl3-gnutls libcurl4-gnutls-dev libcurl4-openssl-dev libpcre3-dev libpq-dev libpq5 gettext libpng12-dev libxml2-dev libcap-dev ca-certificates libc-client2007e-dev psmisc patch git libc-ares-dev libicu-dev e2fsprogs libxslt libxslt1-dev libc-client-dev xz-utils libexpat1-dev libaio-dev libtirpc-dev python-dev libsqlite3-dev libonig-dev;
+    for packages in debian-keyring debian-archive-keyring build-essential gcc g++ make cmake autoconf automake re2c wget cron bzip2 libzip-dev libc6-dev bison file rcconf flex bison m4 gawk less cpp binutils diffutils unzip tar bzip2 libbz2-dev libncurses5 libncurses5-dev libtool libevent-dev openssl libssl-dev zlibc libsasl2-dev libltdl3-dev libltdl-dev zlib1g zlib1g-dev libbz2-1.0 libbz2-dev libglib2.0-0 libglib2.0-dev libpng3 libjpeg-dev libpng-dev libpng12-0 libpng12-dev libkrb5-dev curl libcurl3-gnutls libcurl4-gnutls-dev libcurl4-openssl-dev libpcre3-dev libpq-dev libpq5 gettext libpng12-dev libxml2-dev libcap-dev ca-certificates libc-client2007e-dev psmisc patch git libc-ares-dev libicu-dev e2fsprogs libxslt libxslt1-dev libc-client-dev xz-utils libexpat1-dev libaio-dev libtirpc-dev python-dev libsqlite3-dev libonig-dev lsof;
     do apt-get --no-install-recommends install -y $packages; done
 }
 
@@ -397,10 +411,10 @@ Install_Mhash()
 
 Install_Freetype()
 {
-    if echo "${Ubuntu_Version}" | grep -Eqi "^1[89]\." || echo "${Mint_Version}" | grep -Eqi "^19\." || echo "${Deepin_Version}" | grep -Eqi "^15\.[7-9]|1[0-9]" || echo "${Debian_Version}" | grep -Eqi "^9|10"; then
-        Download_Files ${Download_Mirror}/lib/freetype/${Freetype_New_Ver}.tar.bz2 ${Freetype_New_Ver}.tar.bz2
+    if echo "${Ubuntu_Version}" | grep -Eqi "^1[89]\.|20\." || echo "${Mint_Version}" | grep -Eqi "^19\." || echo "${Deepin_Version}" | grep -Eqi "^15\.[7-9]|1[6-9]|20" || echo "${Debian_Version}" | grep -Eqi "^9|10" || echo "${Raspbian_Version}" | grep -Eqi "^9|10" || echo "${CentOS_Version}" | grep -Eqi "^8"  || echo "${RHEL_Version}" | grep -Eqi "^8" || echo "${Fedora_Version}" | grep -Eqi "^3[0-9]|29"; then
+        Download_Files ${Download_Mirror}/lib/freetype/${Freetype_New_Ver}.tar.xz ${Freetype_New_Ver}.tar.xz
         Echo_Blue "[+] Installing ${Freetype_New_Ver}"
-        Tarj_Cd ${Freetype_New_Ver}.tar.bz2 ${Freetype_New_Ver}
+        TarJ_Cd ${Freetype_New_Ver}.tar.xz ${Freetype_New_Ver}
         ./configure --prefix=/usr/local/freetype --enable-freetype-config
     else
         Download_Files ${Download_Mirror}/lib/freetype/${Freetype_Ver}.tar.bz2 ${Freetype_Ver}.tar.bz2
@@ -596,11 +610,29 @@ Install_Nghttp2()
         cd ${cur_dir}/src
         Download_Files ${Download_Mirror}/lib/nghttp2/${Nghttp2_Ver}.tar.xz ${Nghttp2_Ver}.tar.xz
         [[ -d "${Nghttp2_Ver}" ]] && rm -rf ${Nghttp2_Ver}
-        tar Jxf ${Nghttp2_Ver}.tar.xz && cd ${Nghttp2_Ver}
+        TarJ_Cd ${Nghttp2_Ver}.tar.xz ${Nghttp2_Ver}
         ./configure --prefix=/usr/local/nghttp2
         Make_Install
         cd ${cur_dir}/src/
         rm -rf ${cur_dir}/src/${Nghttp2_Ver}
+    fi
+}
+
+Install_Libzip()
+{
+    if echo "${CentOS_Version}" | grep -Eqi "^7"  || echo "${RHEL_Version}" | grep -Eqi "^7"; then
+        if [ ! -s /usr/local/lib/libzip.so ]; then
+            Echo_Blue "[+] Installing ${Libzip_Ver}"
+            cd ${cur_dir}/src
+            Download_Files ${Download_Mirror}/lib/libzip/${Libzip_Ver}.tar.xz ${Libzip_Ver}.tar.xz
+            TarJ_Cd ${Libzip_Ver}.tar.xz ${Libzip_Ver}
+            ./configure
+            Make_Install
+            cd ${cur_dir}/src/
+            rm -rf ${cur_dir}/src/${Libzip_Ver}
+        fi
+        export PKG_CONFIG_PATH=/usr/local/lib/pkgconfig:$PKG_CONFIG_PATH
+        ldconfig
     fi
 }
 
@@ -725,7 +757,7 @@ Add_Swap()
         fi
     fi
     if command -v python >/dev/null 2>&1; then
-        Disk_Avail=$(${cur_dir}/include/disk.py)
+        Disk_Avail=$(python ${cur_dir}/include/disk.py)
     elif command -v python3 >/dev/null 2>&1; then
         Disk_Avail=$(python3 ${cur_dir}/include/disk.py)
     elif command -v python2 >/dev/null 2>&1; then

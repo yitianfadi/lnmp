@@ -1,4 +1,4 @@
-#!/bin/bash
+#!/usr/bin/env bash
 
 Check_Stack_Choose()
 {
@@ -91,13 +91,18 @@ Install_PHP_Dependent()
     fi
 
     if [ "${DISTRO}" = "CentOS" ] && echo "${CentOS_Version}" | grep -Eqi "^8"; then
-        dnf --enablerepo=PowerTools install rpcgen -y
+        dnf --enablerepo=PowerTools install rpcgen re2c -y
         dnf --enablerepo=PowerTools install oniguruma-devel -y
     fi
 
-    if [ "${DISTRO}" = "CentOS" ] && echo "${CentOS_Version}" | grep -Eqi "^7"; then
-        yum -y install https://dl.fedoraproject.org/pub/epel/7/x86_64/Packages/o/oniguruma-5.9.5-3.el7.x86_64.rpm
-        yum -y install https://dl.fedoraproject.org/pub/epel/7/x86_64/Packages/o/oniguruma-devel-5.9.5-3.el7.x86_64.rpm
+    if echo "${CentOS_Version}" | grep -Eqi "^7" || echo "${RHEL_Version}" | grep -Eqi "^7"; then
+        yum -y install epel-release
+        yum -y install oniguruma oniguruma-devel
+        if [ "${CheckMirror}" = "n" ]; then
+            cd ${cur_dir}/src/
+            yum -y install ./oniguruma-6.8.2-1.el7.x86_64.rpm
+            yum -y install ./oniguruma-devel-6.8.2-1.el7.x86_64.rpm
+        fi
     fi
 
     Install_Icu4c
@@ -769,6 +774,7 @@ fi
 
 Upgrade_PHP_74()
 {
+    Install_Libzip
     Echo_Blue "[+] Installing ${php_version}"
     Tarj_Cd php-${php_version}.tar.bz2 php-${php_version}
     if [ "${Stack}" = "lnmp" ]; then
